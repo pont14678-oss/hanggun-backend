@@ -350,11 +350,11 @@ def get_ride_requests(carpool_id: int):
 @app.get("/debug/env")
 def debug_env():
     return {
-        "GEMINI_API_KEY_exists": bool(os.getenv("GEMINI_API_KEY")),
-        "GOOGLE_API_KEY_exists": bool(os.getenv("GOOGLE_API_KEY")),
-        "TMAP_API_KEY_exists": bool(os.getenv("TMAP_API_KEY")),
+        "all_env_keys": list(os.environ.keys()),
+        "GEMINI_API_KEY_exists": bool(os.environ.get("GEMINI_API_KEY")),
+        "GOOGLE_API_KEY_exists": bool(os.environ.get("GOOGLE_API_KEY")),
+        "TMAP_API_KEY_exists": bool(os.environ.get("TMAP_API_KEY")),
     }
-
 
 @app.post("/requests/{request_id}/approve")
 def approve_request(request_id: int):
