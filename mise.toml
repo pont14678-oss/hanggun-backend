@@ -1,2 +1,7 @@
+[settings]
+python.uv_venv_auto = false
+python_compile = false
+python.github_attestations = false
+
 [tools]
 python = "3.11.9"
