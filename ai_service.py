@@ -1,13 +1,12 @@
 import os
 from google import genai
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
 
 client = None
 
 if GEMINI_API_KEY:
-    client = genai.Client(api_key=GEMINI_API_KEY)
-
+    client = genai.Client(api_key=GEMINI_API_KEY) 
 
 def ask_gemini(question: str, carpool_text: str) -> str:
     if client is None:
