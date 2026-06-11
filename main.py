@@ -350,10 +350,9 @@ def get_ride_requests(carpool_id: int):
 @app.get("/debug/env")
 def debug_env():
     return {
-        "all_env_keys": list(os.environ.keys()),
-        "GEMINI_API_KEY_exists": bool(os.environ.get("GEMINI_API_KEY")),
-        "GOOGLE_API_KEY_exists": bool(os.environ.get("GOOGLE_API_KEY")),
-        "TMAP_API_KEY_exists": bool(os.environ.get("TMAP_API_KEY")),
+        "railway_service": os.getenv("RAILWAY_SERVICE_NAME"),
+        "railway_project": os.getenv("RAILWAY_PROJECT_NAME"),
+        "env_keys": sorted(list(os.environ.keys()))
     }
 
 @app.post("/requests/{request_id}/approve")
