@@ -19,7 +19,7 @@ app.add_middleware(
 
 DB_NAME = "hanggun.db"
 TMAP_API_KEY = os.getenv("TMAP_API_KEY")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
 
 genai.configure(api_key=GEMINI_API_KEY)
 model = genai.GenerativeModel("models/gemini-2.5-flash")
@@ -345,6 +345,15 @@ def get_ride_requests(carpool_id: int):
     conn.close()
 
     return [dict(row) for row in rows]
+
+
+@app.get("/debug/env")
+def debug_env():
+    return {
+        "GEMINI_API_KEY_exists": bool(os.getenv("GEMINI_API_KEY")),
+        "GOOGLE_API_KEY_exists": bool(os.getenv("GOOGLE_API_KEY")),
+        "TMAP_API_KEY_exists": bool(os.getenv("TMAP_API_KEY")),
+    }
 
 
 @app.post("/requests/{request_id}/approve")
