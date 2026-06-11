@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "760895040687",
+    "project_id": "hanggun",
+    "storage_bucket": "hanggun.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:760895040687:android:a9b49b90778d3d6926785a",
+        "android_client_info": {
+          "package_name": "com.example.carpool_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCqTz0q-1D48QzKIyilFq6xBrFWiH6Q8tg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:760895040687:android:ed48f4e391bd6bad26785a",
+        "android_client_info": {
+          "package_name": "com.example.hanggun_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCqTz0q-1D48QzKIyilFq6xBrFWiH6Q8tg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
