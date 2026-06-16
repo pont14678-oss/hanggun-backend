@@ -641,6 +641,126 @@ def update_driver_location(carpool_id: int, data: DriverLocationUpdate):
         "carpool": dict(updated_carpool),
     }
 
+@app.get("/carpools/{carpool_id}/pickup-recommendation")
+def recommend_pickup_place(carpool_id: int):
+    conn = sqlite3.connect(DB_NAME)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT * FROM carpools WHERE id = ?", (carpool_id,))
+    carpool = cursor.fetchone()
+
+    if carpool is None:
+        conn.close()
+        raise HTTPException(status_code=404, detail="카풀을 찾을 수 없습니다.")
+
+    cursor.execute(
+        """
+        SELECT *
+        FROM ride_requests
+        WHERE carpool_id = ?
+          AND pickup_lat IS NOT NULL
+          AND pickup_lon IS NOT NULL
+          AND status != '거절'
+        """,
+        (carpool_id,),
+    )
+
+    requests = cursor.fetchall()
+    conn.close()
+
+    points = []
+
+    if carpool["departure_lat"] is not None and carpool["departure_lon"] is not None:
+        points.append({
+            "name": "운전자 출발지",
+            "lat": carpool["departure_lat"],
+            "lon": carpool["departure_lon"],
+            "location": carpool["departure"],
+        })
+
+    for r in requests:
+        points.append({
+            "name": r["rider_name"],
+            "lat": r["pickup_lat"],
+            "lon": r["pickup_lon"],
+            "location": r["pickup_location"],
+        })
+
+    if len(points) < 2:
+        raise HTTPException(
+            status_code=400,
+            detail="추천을 위해서는 운전자 출발지와 신청자 위치가 필요합니다.",
+        )
+
+    avg_lat = sum(float(p["lat"]) for p in points) / len(points)
+    avg_lon = sum(float(p["lon"]) for p in points) / len(points)
+
+    address = reverse_geocode_address(avg_lat, avg_lon)
+
+    point_text = ""
+    for p in points:
+        point_text += (
+            f"\n- {p['name']}: {p['location']} "
+            f"(위도 {p['lat']}, 경도 {p['lon']})"
+        )
+
+    prompt = f"""
+너는 예비군 카풀 앱 행군(HangGun)의 AI 픽업 장소 추천 도우미다.
+
+카풀 정보:
+- 출발지: {carpool['departure']}
+- 목적지: {carpool['destination']}
+- 출발 시간: {carpool['time']}
+
+참여자 위치:
+{point_text}
+
+계산된 중간 지점 주소:
+{address}
+
+답변 규칙:
+1. 한국어로 답변한다.
+2. 운전자와 탑승자가 만나기 좋은 픽업 장소를 1곳 추천한다.
+3. 장소명은 너무 길지 않게 쓴다.
+4. 추천 이유는 2~3문장으로 쓴다.
+5. 실제 위치를 모르면 중간 지점 주소를 기준으로 설명한다.
+6. 형식은 반드시 아래처럼 작성한다.
+
+추천 장소: 장소명
+추천 이유: 이유
+"""
+
+    try:
+        response = model.generate_content(prompt)
+        ai_text = response.text or ""
+    except Exception:
+        ai_text = ""
+
+    recommended_place = address
+    reason = "운전자 출발지와 신청자 위치들의 중간 지점에 가까워 합류하기 좋은 위치입니다."
+
+    if "추천 장소:" in ai_text:
+        try:
+            recommended_place = ai_text.split("추천 장소:")[1].split("추천 이유:")[0].strip()
+        except Exception:
+            recommended_place = address
+
+    if "추천 이유:" in ai_text:
+        try:
+            reason = ai_text.split("추천 이유:")[1].strip()
+        except Exception:
+            pass
+
+    return {
+        "success": True,
+        "recommended_place": recommended_place,
+        "recommended_address": address,
+        "recommended_lat": avg_lat,
+        "recommended_lon": avg_lon,
+        "reason": reason,
+        "participants_count": len(points),
+    }
 
 @app.post("/tmap/search")
 def search_place(req: PlaceSearchRequest):
