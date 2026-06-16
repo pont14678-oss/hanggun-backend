@@ -64,7 +64,7 @@ class _CarpoolPageState extends State<CarpoolPage> {
   }
 
   Future<Position> getCurrentPosition() async {
-    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
 
     if (!serviceEnabled) {
       throw Exception('위치 서비스가 꺼져 있습니다. 휴대폰 위치 기능을 켜주세요.');
@@ -118,12 +118,8 @@ class _CarpoolPageState extends State<CarpoolPage> {
 
     if (!mounted) return;
 
-    final nameController = TextEditingController(
-      text: profile['name'] ?? '',
-    );
-    final phoneController = TextEditingController(
-      text: profile['phone'] ?? '',
-    );
+    final nameController = TextEditingController(text: profile['name'] ?? '');
+    final phoneController = TextEditingController(text: profile['phone'] ?? '');
 
     bool useCurrentLocation = true;
     bool isSubmitting = false;
@@ -159,7 +155,7 @@ class _CarpoolPageState extends State<CarpoolPage> {
                     contentPadding: EdgeInsets.zero,
                     value: useCurrentLocation,
                     title: const Text('현재 위치를 승차 위치로 보내기'),
-                    subtitle: const Text('운전자가 신청자 목록에서 위치를 확인할 수 있습니다.'),
+                    subtitle: const Text('주소와 GPS 좌표가 함께 저장됩니다.'),
                     onChanged: isSubmitting
                         ? null
                         : (value) {
@@ -209,7 +205,11 @@ class _CarpoolPageState extends State<CarpoolPage> {
 
                               pickupLat = position.latitude;
                               pickupLon = position.longitude;
-                              pickupLocation = '현재 위치';
+
+                              pickupLocation = await ApiService.reverseGeocode(
+                                lat: pickupLat,
+                                lon: pickupLon,
+                              );
                             }
 
                             await ApiService.joinCarpool(
@@ -263,6 +263,38 @@ class _CarpoolPageState extends State<CarpoolPage> {
     phoneController.dispose();
   }
 
+  Future<void> updateMyDriverLocation(int carpoolId) async {
+    try {
+      final position = await getCurrentPosition();
+
+      final address = await ApiService.reverseGeocode(
+        lat: position.latitude,
+        lon: position.longitude,
+      );
+
+      await ApiService.updateDriverLocation(
+        carpoolId: carpoolId,
+        driverLat: position.latitude,
+        driverLon: position.longitude,
+        driverLocation: address,
+      );
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('운전자 위치 저장 완료: $address')),
+      );
+
+      await loadCarpools();
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('운전자 위치 저장 실패: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -273,9 +305,7 @@ class _CarpoolPageState extends State<CarpoolPage> {
             onPressed: () async {
               await Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (_) => const ProfilePage(),
-                ),
+                MaterialPageRoute(builder: (_) => const ProfilePage()),
               );
 
               await loadProfile();
@@ -294,9 +324,7 @@ class _CarpoolPageState extends State<CarpoolPage> {
         onPressed: () async {
           final result = await Navigator.push(
             context,
-            MaterialPageRoute(
-              builder: (_) => const CreateCarpoolPage(),
-            ),
+            MaterialPageRoute(builder: (_) => const CreateCarpoolPage()),
           );
 
           if (result == true) {
@@ -332,6 +360,8 @@ class _CarpoolPageState extends State<CarpoolPage> {
                     final fare = getIntValue(c, 'fare', 5000);
                     final match = getIntValue(c, 'match', 90);
                     final driverPhone = c['driver_phone']?.toString() ?? '';
+                    final driverLocation =
+                        c['driver_location']?.toString() ?? '';
 
                     final leftSeats = maxSeats - currentSeats;
                     final isFull = leftSeats <= 0;
@@ -359,6 +389,8 @@ class _CarpoolPageState extends State<CarpoolPage> {
                             Text('예상 이동시간: $minutes분'),
                             Text('예상 거리: $distanceKm km'),
                             Text('예상 요금: $fare원'),
+                            if (driverLocation.isNotEmpty)
+                              Text('운전자 현재 위치: $driverLocation'),
                             const SizedBox(height: 10),
                             Row(
                               children: [
@@ -385,30 +417,42 @@ class _CarpoolPageState extends State<CarpoolPage> {
                                 child: Text(isFull ? '만석' : '탑승 신청'),
                               ),
                             ),
-                            if (isDriver)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 8),
-                                child: SizedBox(
-                                  width: double.infinity,
-                                  child: OutlinedButton(
-                                    onPressed: id == 0
-                                        ? null
-                                        : () async {
-                                            await Navigator.push(
-                                              context,
-                                              MaterialPageRoute(
-                                                builder: (_) => RequestPage(
-                                                  carpoolId: id,
-                                                ),
-                                              ),
-                                            );
-
-                                            loadCarpools();
-                                          },
-                                    child: const Text('신청자 보기'),
-                                  ),
+                            if (isDriver) ...[
+                              const SizedBox(height: 8),
+                              SizedBox(
+                                width: double.infinity,
+                                child: OutlinedButton.icon(
+                                  onPressed: id == 0
+                                      ? null
+                                      : () {
+                                          updateMyDriverLocation(id);
+                                        },
+                                  icon: const Icon(Icons.my_location),
+                                  label: const Text('내 위치 운전자 위치로 저장'),
                                 ),
                               ),
+                              const SizedBox(height: 8),
+                              SizedBox(
+                                width: double.infinity,
+                                child: OutlinedButton(
+                                  onPressed: id == 0
+                                      ? null
+                                      : () async {
+                                          await Navigator.push(
+                                            context,
+                                            MaterialPageRoute(
+                                              builder: (_) => RequestPage(
+                                                carpoolId: id,
+                                              ),
+                                            ),
+                                          );
+
+                                          loadCarpools();
+                                        },
+                                  child: const Text('신청자 보기'),
+                                ),
+                              ),
+                            ],
                           ],
                         ),
                       ),

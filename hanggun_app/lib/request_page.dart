@@ -58,6 +58,8 @@ class _RequestPageState extends State<RequestPage> {
 
       await loadRequests();
 
+      if (!mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('승인 완료')),
       );
@@ -78,6 +80,8 @@ class _RequestPageState extends State<RequestPage> {
 
       await loadRequests();
 
+      if (!mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('거절 완료')),
       );
@@ -86,6 +90,28 @@ class _RequestPageState extends State<RequestPage> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('거절 실패: $e')),
+      );
+    }
+  }
+
+  Future<void> handleComplete(int requestId) async {
+    try {
+      await ApiService.completeRequest(requestId);
+
+      if (!mounted) return;
+
+      await loadRequests();
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('탑승 완료 처리됨')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('탑승 완료 실패: $e')),
       );
     }
   }
@@ -146,6 +172,14 @@ class _RequestPageState extends State<RequestPage> {
                     final pickupLat = formatCoordinate(r['pickup_lat']);
                     final pickupLon = formatCoordinate(r['pickup_lon']);
 
+                    final driverLocation =
+                        r['driver_location']?.toString() ?? '운전자 위치 정보 없음';
+                    final driverLat = formatCoordinate(r['driver_lat']);
+                    final driverLon = formatCoordinate(r['driver_lon']);
+
+                    final rideCompleted =
+                        getIntValue(r, 'ride_completed', 0) == 1;
+
                     return Card(
                       margin: const EdgeInsets.only(bottom: 12),
                       child: Padding(
@@ -163,12 +197,25 @@ class _RequestPageState extends State<RequestPage> {
                             const SizedBox(height: 8),
                             Text('전화번호: $phone'),
                             Text('상태: $status'),
+                            Text('탑승 완료: ${rideCompleted ? "완료" : "미완료"}'),
                             const SizedBox(height: 8),
                             const Divider(),
                             const SizedBox(height: 8),
-                            Text('승차 위치: $pickupLocation'),
+                            const Text(
+                              '신청자 승차 위치',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            Text('주소: $pickupLocation'),
                             Text('위도: $pickupLat'),
                             Text('경도: $pickupLon'),
+                            const SizedBox(height: 12),
+                            const Text(
+                              '운전자 현재 위치',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            Text('주소: $driverLocation'),
+                            Text('위도: $driverLat'),
+                            Text('경도: $driverLon'),
                             const SizedBox(height: 12),
                             if (status == '대기')
                               Row(
@@ -195,6 +242,27 @@ class _RequestPageState extends State<RequestPage> {
                                     ),
                                   ),
                                 ],
+                              ),
+                            if (status == '승인' && !rideCompleted)
+                              SizedBox(
+                                width: double.infinity,
+                                child: ElevatedButton.icon(
+                                  onPressed: id == 0
+                                      ? null
+                                      : () {
+                                          handleComplete(id);
+                                        },
+                                  icon: const Icon(Icons.check_circle),
+                                  label: const Text('탑승 완료 처리'),
+                                ),
+                              ),
+                            if (rideCompleted)
+                              const Text(
+                                '탑승 완료된 신청입니다.',
+                                style: TextStyle(
+                                  color: Colors.green,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                           ],
                         ),
