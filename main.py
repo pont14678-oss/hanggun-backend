@@ -762,6 +762,53 @@ def recommend_pickup_place(carpool_id: int):
         "participants_count": len(points),
     }
 
+@app.get("/my-rides/{phone}")
+def get_my_rides(phone: str):
+    conn = sqlite3.connect(DB_NAME)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        SELECT
+            r.id AS request_id,
+            r.carpool_id,
+            r.rider_name,
+            r.rider_phone,
+            r.pickup_location,
+            r.pickup_lat,
+            r.pickup_lon,
+            r.status,
+            r.ride_completed,
+            r.completed_at,
+            r.created_at,
+            c.departure,
+            c.destination,
+            c.time,
+            c.maxSeats,
+            c.currentSeats,
+            c.minutes,
+            c.distanceKm,
+            c.fare,
+            c.driver_name,
+            c.driver_phone,
+            c.driver_lat,
+            c.driver_lon,
+            c.driver_location,
+            c.driver_location_updated_at
+        FROM ride_requests r
+        JOIN carpools c ON r.carpool_id = c.id
+        WHERE r.rider_phone = ?
+        ORDER BY r.id DESC
+        """,
+        (phone,),
+    )
+
+    rows = cursor.fetchall()
+    conn.close()
+
+    return [dict(row) for row in rows]
+
 @app.post("/tmap/search")
 def search_place(req: PlaceSearchRequest):
     url = "https://apis.openapi.sk.com/tmap/pois"
