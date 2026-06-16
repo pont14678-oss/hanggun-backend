@@ -58,8 +58,6 @@ class _RequestPageState extends State<RequestPage> {
 
       await loadRequests();
 
-      if (!mounted) return;
-
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('승인 완료')),
       );
@@ -80,8 +78,6 @@ class _RequestPageState extends State<RequestPage> {
 
       await loadRequests();
 
-      if (!mounted) return;
-
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('거절 완료')),
       );
@@ -101,6 +97,16 @@ class _RequestPageState extends State<RequestPage> {
     if (value is String) return int.tryParse(value) ?? defaultValue;
 
     return defaultValue;
+  }
+
+  String formatCoordinate(dynamic value) {
+    if (value == null) return '없음';
+
+    final number = double.tryParse(value.toString());
+
+    if (number == null) return '없음';
+
+    return number.toStringAsFixed(6);
   }
 
   @override
@@ -135,6 +141,11 @@ class _RequestPageState extends State<RequestPage> {
                     final phone = r['rider_phone']?.toString() ?? '전화번호 없음';
                     final status = r['status']?.toString() ?? '대기';
 
+                    final pickupLocation =
+                        r['pickup_location']?.toString() ?? '위치 정보 없음';
+                    final pickupLat = formatCoordinate(r['pickup_lat']);
+                    final pickupLon = formatCoordinate(r['pickup_lon']);
+
                     return Card(
                       margin: const EdgeInsets.only(bottom: 12),
                       child: Padding(
@@ -152,6 +163,12 @@ class _RequestPageState extends State<RequestPage> {
                             const SizedBox(height: 8),
                             Text('전화번호: $phone'),
                             Text('상태: $status'),
+                            const SizedBox(height: 8),
+                            const Divider(),
+                            const SizedBox(height: 8),
+                            Text('승차 위치: $pickupLocation'),
+                            Text('위도: $pickupLat'),
+                            Text('경도: $pickupLon'),
                             const SizedBox(height: 12),
                             if (status == '대기')
                               Row(
