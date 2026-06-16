@@ -4,6 +4,7 @@ import 'signup_page.dart';
 import 'carpool_page.dart';
 import 'my_rides_page.dart';
 import 'ai_page.dart';
+import 'release_page.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -134,12 +135,14 @@ class _MainHomePageState extends State<MainHomePage> {
   final pages = const [
     CarpoolPage(),
     MyRidesPage(),
+    ReleasePage(),
     AiPage(),
   ];
 
   final titles = const [
     '카풀',
     '내 신청',
+    '퇴소예측',
     'AI 도우미',
   ];
 
@@ -169,6 +172,10 @@ class _MainHomePageState extends State<MainHomePage> {
       body: pages[selectedIndex],
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: selectedIndex,
+        type: BottomNavigationBarType.fixed,
+        selectedItemColor: Colors.green,
+        unselectedItemColor: Colors.black54,
+        backgroundColor: Colors.white,
         onTap: (index) {
           setState(() {
             selectedIndex = index;
@@ -183,6 +190,12 @@ class _MainHomePageState extends State<MainHomePage> {
             icon: Icon(Icons.assignment),
             label: '내 신청',
           ),
+
+          BottomNavigationBarItem(
+            icon: Icon(Icons.schedule),
+            label: '퇴소예측',
+          ),
+          
           BottomNavigationBarItem(
             icon: Icon(Icons.smart_toy),
             label: 'AI',

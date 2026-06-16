@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'api_service.dart';
 import 'user_profile.dart';
+import 'map_page.dart';
+import 'dart:async';
 
 class MyRidesPage extends StatefulWidget {
   const MyRidesPage({super.key});
@@ -13,6 +15,7 @@ class _MyRidesPageState extends State<MyRidesPage> {
   List<dynamic> rides = [];
   bool isLoading = true;
   String myPhone = '';
+  Timer? refreshTimer;
 
   Map<int, Map<String, dynamic>> recommendations = {};
   Set<int> loadingRecommendations = {};
@@ -20,9 +23,16 @@ class _MyRidesPageState extends State<MyRidesPage> {
   @override
   void initState() {
     super.initState();
-    loadMyRides();
-  }
 
+    loadMyRides();
+  
+    refreshTimer = Timer.periodic(
+    const Duration(seconds: 30),
+    (_) {
+      loadMyRides();
+    },
+  );
+}
   Future<void> loadMyRides() async {
     setState(() {
       isLoading = true;
@@ -114,6 +124,12 @@ class _MyRidesPageState extends State<MyRidesPage> {
 
     return number.toStringAsFixed(6);
   }
+  double? parseDoubleValue(dynamic value) {
+    if (value == null) return null;
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+  return double.tryParse(value.toString());
+  }
 
   Widget buildRecommendationCard(Map<String, dynamic> rec) {
     final place = rec['recommended_place']?.toString() ?? '추천 장소 없음';
@@ -176,7 +192,19 @@ class _MyRidesPageState extends State<MyRidesPage> {
 
     final rec = recommendations[carpoolId];
     final isRecLoading = loadingRecommendations.contains(carpoolId);
+    
+    final driverLatValue = parseDoubleValue(ride['driver_lat']);
+    final driverLonValue = parseDoubleValue(ride['driver_lon']);
 
+    final riderLatValue = parseDoubleValue(ride['pickup_lat']);
+    final riderLonValue = parseDoubleValue(ride['pickup_lon']);
+
+    final pickupLatValue =
+    rec == null ? null : parseDoubleValue(rec['recommended_lat']);
+
+    final pickupLonValue =
+    rec == null ? null : parseDoubleValue(rec['recommended_lon']);
+    
     return Card(
       margin: const EdgeInsets.only(bottom: 14),
       child: Padding(
@@ -241,6 +269,34 @@ class _MyRidesPageState extends State<MyRidesPage> {
                 ),
               ),
             if (rec != null) buildRecommendationCard(rec),
+            if (status == '승인')
+  SizedBox(
+    width: double.infinity,
+    child: OutlinedButton.icon(
+      onPressed: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => MapPage(
+              driverLat: driverLatValue,
+              driverLon: driverLonValue,
+              riderLat: riderLatValue,
+              riderLon: riderLonValue,
+              pickupLat: pickupLatValue,
+              pickupLon: pickupLonValue,
+              driverLabel: driverLocation,
+              riderLabel: pickupLocation,
+              pickupLabel: rec == null
+                  ? 'AI 픽업 추천을 먼저 실행해주세요.'
+                  : rec['recommended_place']?.toString() ?? 'AI 픽업 위치',
+            ),
+          ),
+        );
+      },
+      icon: const Icon(Icons.map),
+      label: const Text('지도 보기'),
+    ),
+  ),
             if (status == '대기')
               const Padding(
                 padding: EdgeInsets.only(top: 8),
@@ -302,4 +358,9 @@ class _MyRidesPageState extends State<MyRidesPage> {
                 ),
     );
   }
+  @override
+void dispose() {
+  refreshTimer?.cancel();
+  super.dispose();
+}
 }

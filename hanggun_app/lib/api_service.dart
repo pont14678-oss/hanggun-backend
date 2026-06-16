@@ -141,6 +141,16 @@ static Future<List<dynamic>> getMyRides(String phone) async {
       throw Exception('탑승 완료 실패: ${response.body}');
     }
   }
+  
+  static Future<void> completeCarpool(int carpoolId) async {
+  final response = await http.post(
+    Uri.parse('$baseUrl/carpools/$carpoolId/complete'),
+  );
+
+  if (response.statusCode != 200) {
+    throw Exception('운행 완료 실패: ${response.body}');
+  }
+}
 
   static Future<void> updateDriverLocation({
     required int carpoolId,
@@ -201,6 +211,47 @@ static Future<List<dynamic>> getMyRides(String phone) async {
 
     throw Exception('장소 검색 실패: ${response.body}');
   }
+
+  static Future<void> submitReleaseReport({
+  required String trainingCenter,
+  required String trainingType,
+  required String reserveYear,
+  required String weather,
+  required String releaseTime,
+}) async {
+  final response = await http.post(
+    Uri.parse('$baseUrl/release-report'),
+    headers: {'Content-Type': 'application/json'},
+    body: jsonEncode({
+      'training_center': trainingCenter,
+      'training_type': trainingType,
+      'reserve_year': reserveYear,
+      'weather': weather,
+      'release_time': releaseTime,
+    }),
+  );
+
+  if (response.statusCode != 200) {
+    throw Exception('퇴소시간 제보 실패: ${response.body}');
+  }
+}
+
+static Future<Map<String, dynamic>> getReleasePrediction({
+  required String trainingCenter,
+  required String trainingType,
+}) async {
+  final response = await http.get(
+    Uri.parse(
+      '$baseUrl/release-prediction?training_center=${Uri.encodeComponent(trainingCenter)}&training_type=${Uri.encodeComponent(trainingType)}',
+    ),
+  );
+
+  if (response.statusCode == 200) {
+    return jsonDecode(response.body);
+  }
+
+  throw Exception('퇴소시간 예측 실패: ${response.body}');
+}
 
   static Future<String> askAi(String question) async {
     final response = await http.post(

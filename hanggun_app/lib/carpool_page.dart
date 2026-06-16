@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'dart:async';
 
 import 'api_service.dart';
 import 'create_carpool_page.dart';
@@ -15,6 +16,7 @@ class CarpoolPage extends StatefulWidget {
 }
 
 class _CarpoolPageState extends State<CarpoolPage> {
+  Timer? locationTimer;
   List<dynamic> carpools = [];
   bool isLoading = true;
   String myPhone = '';
@@ -295,6 +297,31 @@ class _CarpoolPageState extends State<CarpoolPage> {
     }
   }
 
+  void startLocationSharing(int carpoolId) {
+  locationTimer?.cancel();
+
+  locationTimer = Timer.periodic(
+    const Duration(seconds: 30),
+    (_) async {
+      try {
+        final position = await getCurrentPosition();
+
+        final address = await ApiService.reverseGeocode(
+          lat: position.latitude,
+          lon: position.longitude,
+        );
+
+        await ApiService.updateDriverLocation(
+          carpoolId: carpoolId,
+          driverLat: position.latitude,
+          driverLon: position.longitude,
+          driverLocation: address,
+        );
+      } catch (_) {}
+    },
+  );
+}
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -431,6 +458,45 @@ class _CarpoolPageState extends State<CarpoolPage> {
                                   label: const Text('내 위치 운전자 위치로 저장'),
                                 ),
                               ),
+
+                              const SizedBox(height: 8),
+SizedBox(
+  width: double.infinity,
+  child: OutlinedButton.icon(
+    onPressed: id == 0
+        ? null
+        : () {
+            startLocationSharing(id);
+
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('실시간 위치 공유가 시작되었습니다.'),
+              ),
+            );
+          },
+    icon: const Icon(Icons.location_searching),
+    label: const Text('실시간 위치 공유 시작'),
+  ),
+),
+
+const SizedBox(height: 8),
+SizedBox(
+  width: double.infinity,
+  child: OutlinedButton.icon(
+    onPressed: () {
+      locationTimer?.cancel();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('실시간 위치 공유가 중지되었습니다.'),
+        ),
+      );
+    },
+    icon: const Icon(Icons.stop_circle),
+    label: const Text('실시간 위치 공유 중지'),
+  ),
+),
+                              
                               const SizedBox(height: 8),
                               SizedBox(
                                 width: double.infinity,
@@ -460,5 +526,11 @@ class _CarpoolPageState extends State<CarpoolPage> {
                   },
                 ),
     );
+  }
+
+  @override
+  void dispose() {
+    locationTimer?.cancel();
+    super.dispose();
   }
 }

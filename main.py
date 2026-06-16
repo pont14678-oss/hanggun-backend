@@ -160,6 +160,8 @@ def init_db():
     add_column_if_not_exists(cursor, "carpools", "driver_lon", "REAL")
     add_column_if_not_exists(cursor, "carpools", "driver_location", "TEXT")
     add_column_if_not_exists(cursor, "carpools", "driver_location_updated_at", "TIMESTAMP")
+    add_column_if_not_exists(cursor, "carpools", "status", "TEXT DEFAULT '모집중'")
+    add_column_if_not_exists(cursor, "carpools", "completed_at", "TIMESTAMP")
 
     conn.commit()
     conn.close()
@@ -368,7 +370,8 @@ def create_carpool(data: CarpoolCreate):
             destination_lat,
             destination_lon,
             driver_name,
-            driver_phone
+            driver_phone,
+            status
         )
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
@@ -388,6 +391,7 @@ def create_carpool(data: CarpoolCreate):
             data.destination_lon,
             data.driver_name,
             data.driver_phone,
+            "모집중",
         ),
     )
 
@@ -421,7 +425,12 @@ def get_carpools():
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM carpools ORDER BY id DESC")
+    cursor.execute("""
+    SELECT *
+    FROM carpools
+    WHERE status IS NULL OR status != '완료'
+    ORDER BY id DESC
+""")
     rows = cursor.fetchall()
 
     conn.close()
@@ -672,6 +681,52 @@ def complete_request(request_id: int):
         "request": dict(updated_request),
     }
 
+@app.post("/carpools/{carpool_id}/complete")
+def complete_carpool(carpool_id: int):
+    conn = sqlite3.connect(DB_NAME)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT * FROM carpools WHERE id = ?", (carpool_id,))
+    carpool = cursor.fetchone()
+
+    if carpool is None:
+        conn.close()
+        raise HTTPException(status_code=404, detail="카풀을 찾을 수 없습니다.")
+
+    cursor.execute(
+        """
+        UPDATE carpools
+        SET status = '완료',
+            completed_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+        """,
+        (carpool_id,),
+    )
+
+    cursor.execute(
+        """
+        UPDATE ride_requests
+        SET ride_completed = 1,
+            completed_at = CURRENT_TIMESTAMP
+        WHERE carpool_id = ?
+          AND status = '승인'
+        """,
+        (carpool_id,),
+    )
+
+    conn.commit()
+
+    cursor.execute("SELECT * FROM carpools WHERE id = ?", (carpool_id,))
+    updated_carpool = cursor.fetchone()
+
+    conn.close()
+
+    return {
+        "success": True,
+        "message": "운행이 완료되었습니다.",
+        "carpool": dict(updated_carpool),
+    }
 
 @app.post("/carpools/{carpool_id}/driver-location")
 def update_driver_location(carpool_id: int, data: DriverLocationUpdate):
