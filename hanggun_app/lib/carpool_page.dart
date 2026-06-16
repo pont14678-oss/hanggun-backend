@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
+
 import 'api_service.dart';
 import 'create_carpool_page.dart';
 import 'request_page.dart';
@@ -61,6 +63,32 @@ class _CarpoolPageState extends State<CarpoolPage> {
     }
   }
 
+  Future<Position> getCurrentPosition() async {
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+
+    if (!serviceEnabled) {
+      throw Exception('위치 서비스가 꺼져 있습니다. 휴대폰 위치 기능을 켜주세요.');
+    }
+
+    LocationPermission permission = await Geolocator.checkPermission();
+
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+
+    if (permission == LocationPermission.denied) {
+      throw Exception('위치 권한이 거부되었습니다.');
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      throw Exception('위치 권한이 영구적으로 거부되었습니다. 설정에서 권한을 허용해주세요.');
+    }
+
+    return await Geolocator.getCurrentPosition(
+      desiredAccuracy: LocationAccuracy.high,
+    );
+  }
+
   int getIntValue(Map<String, dynamic> data, String key, int defaultValue) {
     final value = data[key];
 
@@ -97,77 +125,136 @@ class _CarpoolPageState extends State<CarpoolPage> {
       text: profile['phone'] ?? '',
     );
 
+    bool useCurrentLocation = true;
+    bool isSubmitting = false;
+
     await showDialog(
       context: context,
-      builder: (_) {
-        return AlertDialog(
-          title: const Text('탑승 신청'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameController,
-                decoration: const InputDecoration(
-                  labelText: '이름',
-                  hintText: '예: 홍길동',
-                ),
+      barrierDismissible: !isSubmitting,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('탑승 신청'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nameController,
+                    decoration: const InputDecoration(
+                      labelText: '이름',
+                      hintText: '예: 홍길동',
+                    ),
+                  ),
+                  TextField(
+                    controller: phoneController,
+                    keyboardType: TextInputType.phone,
+                    decoration: const InputDecoration(
+                      labelText: '전화번호',
+                      hintText: '예: 01012345678',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    value: useCurrentLocation,
+                    title: const Text('현재 위치를 승차 위치로 보내기'),
+                    subtitle: const Text('운전자가 신청자 목록에서 위치를 확인할 수 있습니다.'),
+                    onChanged: isSubmitting
+                        ? null
+                        : (value) {
+                            setDialogState(() {
+                              useCurrentLocation = value ?? true;
+                            });
+                          },
+                  ),
+                ],
               ),
-              TextField(
-                controller: phoneController,
-                keyboardType: TextInputType.phone,
-                decoration: const InputDecoration(
-                  labelText: '전화번호',
-                  hintText: '예: 01012345678',
+              actions: [
+                TextButton(
+                  onPressed: isSubmitting
+                      ? null
+                      : () {
+                          Navigator.of(dialogContext).pop();
+                        },
+                  child: const Text('취소'),
                 ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-              child: const Text('취소'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                final name = nameController.text.trim();
-                final phone = phoneController.text.trim();
+                ElevatedButton(
+                  onPressed: isSubmitting
+                      ? null
+                      : () async {
+                          final name = nameController.text.trim();
+                          final phone = phoneController.text.trim();
 
-                if (name.isEmpty || phone.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('이름과 전화번호를 입력해주세요.')),
-                  );
-                  return;
-                }
+                          if (name.isEmpty || phone.isEmpty) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('이름과 전화번호를 입력해주세요.'),
+                              ),
+                            );
+                            return;
+                          }
 
-                try {
-                  await ApiService.joinCarpool(
-                    carpoolId: carpoolId,
-                    riderName: name,
-                    riderPhone: phone,
-                  );
+                          double? pickupLat;
+                          double? pickupLon;
+                          String? pickupLocation;
 
-                  if (!mounted) return;
+                          try {
+                            setDialogState(() {
+                              isSubmitting = true;
+                            });
 
-                  Navigator.of(context).pop();
+                            if (useCurrentLocation) {
+                              final position = await getCurrentPosition();
 
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('탑승 신청이 접수되었습니다.')),
-                  );
+                              pickupLat = position.latitude;
+                              pickupLon = position.longitude;
+                              pickupLocation = '현재 위치';
+                            }
 
-                  await loadCarpools();
-                } catch (e) {
-                  if (!mounted) return;
+                            await ApiService.joinCarpool(
+                              carpoolId: carpoolId,
+                              riderName: name,
+                              riderPhone: phone,
+                              pickupLocation: pickupLocation,
+                              pickupLat: pickupLat,
+                              pickupLon: pickupLon,
+                            );
 
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('탑승 신청 실패: $e')),
-                  );
-                }
-              },
-              child: const Text('신청'),
-            ),
-          ],
+                            if (!mounted) return;
+
+                            Navigator.of(dialogContext).pop();
+
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('탑승 신청이 접수되었습니다.'),
+                              ),
+                            );
+
+                            await loadCarpools();
+                          } catch (e) {
+                            if (!mounted) return;
+
+                            setDialogState(() {
+                              isSubmitting = false;
+                            });
+
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('탑승 신청 실패: $e')),
+                            );
+                          }
+                        },
+                  child: isSubmitting
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('신청'),
+                ),
+              ],
+            );
+          },
         );
       },
     );

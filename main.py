@@ -41,6 +41,9 @@ class CarpoolCreate(BaseModel):
 class RideRequestCreate(BaseModel):
     rider_name: str
     rider_phone: str
+    pickup_location: str | None = None
+    pickup_lat: float | None = None
+    pickup_lon: float | None = None
 
 
 class ChatRequest(BaseModel):
@@ -56,6 +59,16 @@ class RouteRequest(BaseModel):
     start_lon: float
     end_lat: float
     end_lon: float
+
+
+def add_column_if_not_exists(cursor, table_name, column_name, column_type):
+    cursor.execute(f"PRAGMA table_info({table_name})")
+    columns = [row[1] for row in cursor.fetchall()]
+
+    if column_name not in columns:
+        cursor.execute(
+            f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}"
+        )
 
 
 def init_db():
@@ -89,11 +102,18 @@ def init_db():
             carpool_id INTEGER NOT NULL,
             rider_name TEXT NOT NULL,
             rider_phone TEXT NOT NULL,
+            pickup_location TEXT,
+            pickup_lat REAL,
+            pickup_lon REAL,
             status TEXT NOT NULL DEFAULT '대기',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (carpool_id) REFERENCES carpools(id)
         )
     """)
+
+    add_column_if_not_exists(cursor, "ride_requests", "pickup_location", "TEXT")
+    add_column_if_not_exists(cursor, "ride_requests", "pickup_lat", "REAL")
+    add_column_if_not_exists(cursor, "ride_requests", "pickup_lon", "REAL")
 
     conn.commit()
     conn.close()
@@ -291,14 +311,20 @@ def join_carpool(carpool_id: int, data: RideRequestCreate):
             carpool_id,
             rider_name,
             rider_phone,
+            pickup_location,
+            pickup_lat,
+            pickup_lon,
             status
         )
-        VALUES (?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
         (
             carpool_id,
             data.rider_name,
             data.rider_phone,
+            data.pickup_location,
+            data.pickup_lat,
+            data.pickup_lon,
             "대기",
         ),
     )
@@ -333,7 +359,16 @@ def get_ride_requests(carpool_id: int):
 
     cursor.execute(
         """
-        SELECT *
+        SELECT
+            id,
+            carpool_id,
+            rider_name,
+            rider_phone,
+            pickup_location,
+            pickup_lat,
+            pickup_lon,
+            status,
+            created_at
         FROM ride_requests
         WHERE carpool_id = ?
         ORDER BY id DESC
@@ -346,14 +381,6 @@ def get_ride_requests(carpool_id: int):
 
     return [dict(row) for row in rows]
 
-
-@app.get("/debug/env")
-def debug_env():
-    import os
-    return {
-        "TEST_VAR": os.getenv("TEST_VAR", "NOT_FOUND"),
-        "env_count": len(os.environ)
-    }
 
 @app.post("/requests/{request_id}/approve")
 def approve_request(request_id: int):

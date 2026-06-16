@@ -2,7 +2,8 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class ApiService {
-  static const String baseUrl = 'http://10.0.2.2:8000';
+  static const String baseUrl =
+      'https://hanggun-backend-production.up.railway.app';
 
   static Future<List<dynamic>> getCarpools() async {
     final response = await http.get(
@@ -54,6 +55,9 @@ class ApiService {
     required int carpoolId,
     required String riderName,
     required String riderPhone,
+    String? pickupLocation,
+    double? pickupLat,
+    double? pickupLon,
   }) async {
     final response = await http.post(
       Uri.parse('$baseUrl/carpools/$carpoolId/join'),
@@ -61,6 +65,9 @@ class ApiService {
       body: jsonEncode({
         'rider_name': riderName,
         'rider_phone': riderPhone,
+        'pickup_location': pickupLocation,
+        'pickup_lat': pickupLat,
+        'pickup_lon': pickupLon,
       }),
     );
 
