@@ -61,6 +61,17 @@ class RouteRequest(BaseModel):
     end_lon: float
 
 
+class ReverseGeocodeRequest(BaseModel):
+    lat: float
+    lon: float
+
+
+class DriverLocationUpdate(BaseModel):
+    driver_lat: float
+    driver_lon: float
+    driver_location: str | None = None
+
+
 def add_column_if_not_exists(cursor, table_name, column_name, column_type):
     cursor.execute(f"PRAGMA table_info({table_name})")
     columns = [row[1] for row in cursor.fetchall()]
@@ -92,7 +103,11 @@ def init_db():
             destination_lat REAL,
             destination_lon REAL,
             driver_name TEXT,
-            driver_phone TEXT
+            driver_phone TEXT,
+            driver_lat REAL,
+            driver_lon REAL,
+            driver_location TEXT,
+            driver_location_updated_at TIMESTAMP
         )
     """)
 
@@ -106,6 +121,8 @@ def init_db():
             pickup_lat REAL,
             pickup_lon REAL,
             status TEXT NOT NULL DEFAULT '대기',
+            ride_completed INTEGER NOT NULL DEFAULT 0,
+            completed_at TIMESTAMP,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (carpool_id) REFERENCES carpools(id)
         )
@@ -114,6 +131,13 @@ def init_db():
     add_column_if_not_exists(cursor, "ride_requests", "pickup_location", "TEXT")
     add_column_if_not_exists(cursor, "ride_requests", "pickup_lat", "REAL")
     add_column_if_not_exists(cursor, "ride_requests", "pickup_lon", "REAL")
+    add_column_if_not_exists(cursor, "ride_requests", "ride_completed", "INTEGER NOT NULL DEFAULT 0")
+    add_column_if_not_exists(cursor, "ride_requests", "completed_at", "TIMESTAMP")
+
+    add_column_if_not_exists(cursor, "carpools", "driver_lat", "REAL")
+    add_column_if_not_exists(cursor, "carpools", "driver_lon", "REAL")
+    add_column_if_not_exists(cursor, "carpools", "driver_location", "TEXT")
+    add_column_if_not_exists(cursor, "carpools", "driver_location_updated_at", "TIMESTAMP")
 
     conn.commit()
     conn.close()
@@ -175,6 +199,43 @@ def calculate_route(start_lat, start_lon, end_lat, end_lon):
         "minutes": minutes,
         "distanceKm": distance_km,
     }
+
+
+def reverse_geocode_address(lat, lon):
+    url = "https://apis.openapi.sk.com/tmap/geo/reversegeocoding"
+
+    headers = {
+        "appKey": TMAP_API_KEY,
+    }
+
+    params = {
+        "version": "1",
+        "lat": lat,
+        "lon": lon,
+        "coordType": "WGS84GEO",
+        "addressType": "A10",
+    }
+
+    response = requests.get(url, headers=headers, params=params)
+
+    if response.status_code != 200:
+        return "현재 위치"
+
+    data = response.json()
+    address_info = data.get("addressInfo", {})
+
+    full_address = address_info.get("fullAddress")
+
+    if full_address:
+        return full_address
+
+    city = address_info.get("city_do", "")
+    gu = address_info.get("gu_gun", "")
+    dong = address_info.get("legalDong", "")
+
+    address = f"{city} {gu} {dong}".strip()
+
+    return address or "현재 위치"
 
 
 init_db()
@@ -305,6 +366,15 @@ def join_carpool(carpool_id: int, data: RideRequestCreate):
         conn.close()
         raise HTTPException(status_code=400, detail="이미 만석입니다.")
 
+    pickup_location = data.pickup_location
+
+    if (
+        (pickup_location is None or pickup_location == "현재 위치")
+        and data.pickup_lat is not None
+        and data.pickup_lon is not None
+    ):
+        pickup_location = reverse_geocode_address(data.pickup_lat, data.pickup_lon)
+
     cursor.execute(
         """
         INSERT INTO ride_requests (
@@ -322,7 +392,7 @@ def join_carpool(carpool_id: int, data: RideRequestCreate):
             carpool_id,
             data.rider_name,
             data.rider_phone,
-            data.pickup_location,
+            pickup_location,
             data.pickup_lat,
             data.pickup_lon,
             "대기",
@@ -360,18 +430,30 @@ def get_ride_requests(carpool_id: int):
     cursor.execute(
         """
         SELECT
-            id,
-            carpool_id,
-            rider_name,
-            rider_phone,
-            pickup_location,
-            pickup_lat,
-            pickup_lon,
-            status,
-            created_at
-        FROM ride_requests
-        WHERE carpool_id = ?
-        ORDER BY id DESC
+            r.id,
+            r.carpool_id,
+            r.rider_name,
+            r.rider_phone,
+            r.pickup_location,
+            r.pickup_lat,
+            r.pickup_lon,
+            r.status,
+            r.ride_completed,
+            r.completed_at,
+            r.created_at,
+            c.departure,
+            c.destination,
+            c.time,
+            c.driver_name,
+            c.driver_phone,
+            c.driver_lat,
+            c.driver_lon,
+            c.driver_location,
+            c.driver_location_updated_at
+        FROM ride_requests r
+        JOIN carpools c ON r.carpool_id = c.id
+        WHERE r.carpool_id = ?
+        ORDER BY r.id DESC
         """,
         (carpool_id,),
     )
@@ -470,6 +552,96 @@ def reject_request(request_id: int):
     }
 
 
+@app.post("/requests/{request_id}/complete")
+def complete_request(request_id: int):
+    conn = sqlite3.connect(DB_NAME)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT * FROM ride_requests WHERE id = ?", (request_id,))
+    request = cursor.fetchone()
+
+    if request is None:
+        conn.close()
+        raise HTTPException(status_code=404, detail="신청을 찾을 수 없습니다.")
+
+    if request["status"] != "승인":
+        conn.close()
+        raise HTTPException(status_code=400, detail="승인된 신청만 탑승 완료 처리할 수 있습니다.")
+
+    cursor.execute(
+        """
+        UPDATE ride_requests
+        SET ride_completed = 1,
+            completed_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+        """,
+        (request_id,),
+    )
+
+    conn.commit()
+
+    cursor.execute("SELECT * FROM ride_requests WHERE id = ?", (request_id,))
+    updated_request = cursor.fetchone()
+
+    conn.close()
+
+    return {
+        "success": True,
+        "message": "탑승 완료 처리되었습니다.",
+        "request": dict(updated_request),
+    }
+
+
+@app.post("/carpools/{carpool_id}/driver-location")
+def update_driver_location(carpool_id: int, data: DriverLocationUpdate):
+    conn = sqlite3.connect(DB_NAME)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT * FROM carpools WHERE id = ?", (carpool_id,))
+    carpool = cursor.fetchone()
+
+    if carpool is None:
+        conn.close()
+        raise HTTPException(status_code=404, detail="카풀을 찾을 수 없습니다.")
+
+    driver_location = data.driver_location
+
+    if driver_location is None or driver_location == "현재 위치":
+        driver_location = reverse_geocode_address(data.driver_lat, data.driver_lon)
+
+    cursor.execute(
+        """
+        UPDATE carpools
+        SET driver_lat = ?,
+            driver_lon = ?,
+            driver_location = ?,
+            driver_location_updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+        """,
+        (
+            data.driver_lat,
+            data.driver_lon,
+            driver_location,
+            carpool_id,
+        ),
+    )
+
+    conn.commit()
+
+    cursor.execute("SELECT * FROM carpools WHERE id = ?", (carpool_id,))
+    updated_carpool = cursor.fetchone()
+
+    conn.close()
+
+    return {
+        "success": True,
+        "message": "운전자 위치가 저장되었습니다.",
+        "carpool": dict(updated_carpool),
+    }
+
+
 @app.post("/tmap/search")
 def search_place(req: PlaceSearchRequest):
     url = "https://apis.openapi.sk.com/tmap/pois"
@@ -518,6 +690,16 @@ def search_place(req: PlaceSearchRequest):
     return {
         "success": True,
         "results": results,
+    }
+
+
+@app.post("/tmap/reverse-geocode")
+def reverse_geocode(req: ReverseGeocodeRequest):
+    address = reverse_geocode_address(req.lat, req.lon)
+
+    return {
+        "success": True,
+        "address": address,
     }
 
 

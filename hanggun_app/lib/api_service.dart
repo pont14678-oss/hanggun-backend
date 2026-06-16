@@ -6,15 +6,13 @@ class ApiService {
       'https://hanggun-backend-production.up.railway.app';
 
   static Future<List<dynamic>> getCarpools() async {
-    final response = await http.get(
-      Uri.parse('$baseUrl/carpools'),
-    );
+    final response = await http.get(Uri.parse('$baseUrl/carpools'));
 
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
     }
 
-    throw Exception('카풀 목록 불러오기 실패');
+    throw Exception('카풀 목록 불러오기 실패: ${response.body}');
   }
 
   static Future<void> createCarpool({
@@ -108,13 +106,63 @@ class ApiService {
     }
   }
 
+  static Future<void> completeRequest(int requestId) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/requests/$requestId/complete'),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('탑승 완료 실패: ${response.body}');
+    }
+  }
+
+  static Future<void> updateDriverLocation({
+    required int carpoolId,
+    required double driverLat,
+    required double driverLon,
+    String? driverLocation,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/carpools/$carpoolId/driver-location'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'driver_lat': driverLat,
+        'driver_lon': driverLon,
+        'driver_location': driverLocation,
+      }),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('운전자 위치 저장 실패: ${response.body}');
+    }
+  }
+
+  static Future<String> reverseGeocode({
+    required double lat,
+    required double lon,
+  }) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/tmap/reverse-geocode'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'lat': lat,
+        'lon': lon,
+      }),
+    );
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return data['address']?.toString() ?? '현재 위치';
+    }
+
+    return '현재 위치';
+  }
+
   static Future<List<dynamic>> searchPlace(String keyword) async {
     final response = await http.post(
       Uri.parse('$baseUrl/tmap/search'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'keyword': keyword,
-      }),
+      body: jsonEncode({'keyword': keyword}),
     );
 
     if (response.statusCode == 200) {
@@ -132,9 +180,7 @@ class ApiService {
     final response = await http.post(
       Uri.parse('$baseUrl/ai/chat'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'question': question,
-      }),
+      body: jsonEncode({'question': question}),
     );
 
     if (response.statusCode == 200) {
