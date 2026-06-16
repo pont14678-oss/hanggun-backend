@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'signup_page.dart';
 import 'carpool_page.dart';
+import 'my_rides_page.dart';
 import 'ai_page.dart';
 
 class LoginPage extends StatefulWidget {
@@ -132,7 +133,14 @@ class _MainHomePageState extends State<MainHomePage> {
 
   final pages = const [
     CarpoolPage(),
+    MyRidesPage(),
     AiPage(),
+  ];
+
+  final titles = const [
+    '카풀',
+    '내 신청',
+    'AI 도우미',
   ];
 
   Future<void> logout() async {
@@ -150,7 +158,7 @@ class _MainHomePageState extends State<MainHomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('행군'),
+        title: Text(titles[selectedIndex]),
         actions: [
           IconButton(
             onPressed: logout,
@@ -170,6 +178,10 @@ class _MainHomePageState extends State<MainHomePage> {
           BottomNavigationBarItem(
             icon: Icon(Icons.directions_car),
             label: '카풀',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.assignment),
+            label: '내 신청',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.smart_toy),

@@ -100,6 +100,18 @@ class ApiService {
     throw Exception('AI 픽업 추천 실패: ${response.body}');
   }
 
+static Future<List<dynamic>> getMyRides(String phone) async {
+  final response = await http.get(
+    Uri.parse('$baseUrl/my-rides/${Uri.encodeComponent(phone)}'),
+  );
+
+  if (response.statusCode == 200) {
+    return jsonDecode(response.body);
+  }
+
+  throw Exception('내 신청 내역 조회 실패: ${response.body}');
+}
+
   static Future<void> approveRequest(int requestId) async {
     final response = await http.post(
       Uri.parse('$baseUrl/requests/$requestId/approve'),
