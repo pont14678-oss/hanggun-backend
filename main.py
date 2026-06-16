@@ -72,6 +72,15 @@ class DriverLocationUpdate(BaseModel):
     driver_location: str | None = None
 
 
+class ReleaseReportCreate(BaseModel):
+    training_center: str
+    training_type: str
+    reserve_year: str
+    weather: str
+    release_time: str
+    source_type: str | None = "user"
+
+
 def add_column_if_not_exists(cursor, table_name, column_name, column_type):
     cursor.execute(f"PRAGMA table_info({table_name})")
     columns = [row[1] for row in cursor.fetchall()]
@@ -125,6 +134,19 @@ def init_db():
             completed_at TIMESTAMP,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (carpool_id) REFERENCES carpools(id)
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS release_reports (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            training_center TEXT NOT NULL,
+            training_type TEXT NOT NULL,
+            reserve_year TEXT NOT NULL,
+            weather TEXT,
+            release_time TEXT NOT NULL,
+            source_type TEXT DEFAULT 'user',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
 
@@ -200,6 +222,63 @@ def calculate_route(start_lat, start_lon, end_lat, end_lon):
         "distanceKm": distance_km,
     }
 
+def seed_release_dataset():
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT COUNT(*) FROM release_reports WHERE source_type = 'seed'")
+    count = cursor.fetchone()[0]
+
+    if count > 0:
+        conn.close()
+        return
+
+    seed_data = [
+        ("춘천과학화예비군훈련장", "학생예비군", "학생", "맑음", "16:25"),
+        ("춘천과학화예비군훈련장", "학생예비군", "학생", "흐림", "16:40"),
+        ("춘천과학화예비군훈련장", "기본훈련", "5년차", "맑음", "16:55"),
+        ("춘천과학화예비군훈련장", "기본훈련", "6년차", "비", "17:10"),
+        ("춘천과학화예비군훈련장", "작계훈련", "5년차", "맑음", "15:10"),
+
+        ("수원화성오산과학화예비군훈련장", "학생예비군", "학생", "맑음", "16:30"),
+        ("수원화성오산과학화예비군훈련장", "학생예비군", "학생", "흐림", "16:45"),
+        ("수원화성오산과학화예비군훈련장", "기본훈련", "5년차", "맑음", "17:05"),
+        ("수원화성오산과학화예비군훈련장", "기본훈련", "6년차", "비", "17:20"),
+        ("수원화성오산과학화예비군훈련장", "작계훈련", "6년차", "흐림", "15:25"),
+
+        ("안양박달과학화예비군훈련장", "학생예비군", "학생", "맑음", "16:20"),
+        ("안양박달과학화예비군훈련장", "기본훈련", "5년차", "맑음", "16:50"),
+        ("안양박달과학화예비군훈련장", "기본훈련", "6년차", "흐림", "17:00"),
+        ("안양박달과학화예비군훈련장", "작계훈련", "5년차", "비", "15:30"),
+
+        ("강릉예비군훈련장", "학생예비군", "학생", "맑음", "16:35"),
+        ("강릉예비군훈련장", "기본훈련", "5년차", "흐림", "17:05"),
+        ("강릉예비군훈련장", "기본훈련", "6년차", "비", "17:25"),
+        ("강릉예비군훈련장", "작계훈련", "6년차", "맑음", "15:20"),
+
+        ("금곡예비군훈련장", "학생예비군", "학생", "맑음", "16:25"),
+        ("금곡예비군훈련장", "기본훈련", "5년차", "맑음", "16:55"),
+        ("금곡예비군훈련장", "기본훈련", "6년차", "흐림", "17:15"),
+        ("금곡예비군훈련장", "작계훈련", "5년차", "비", "15:35"),
+    ]
+
+    cursor.executemany(
+        """
+        INSERT INTO release_reports (
+            training_center,
+            training_type,
+            reserve_year,
+            weather,
+            release_time,
+            source_type
+        )
+        VALUES (?, ?, ?, ?, ?, 'seed')
+        """,
+        seed_data,
+    )
+
+    conn.commit()
+    conn.close()
 
 def reverse_geocode_address(lat, lon):
     url = "https://apis.openapi.sk.com/tmap/geo/reversegeocoding"
@@ -239,6 +318,7 @@ def reverse_geocode_address(lat, lon):
 
 
 init_db()
+seed_release_dataset()
 
 
 @app.get("/")
@@ -808,6 +888,127 @@ def get_my_rides(phone: str):
     conn.close()
 
     return [dict(row) for row in rows]
+
+@app.post("/release-report")
+def create_release_report(data: ReleaseReportCreate):
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        INSERT INTO release_reports (
+            training_center,
+            training_type,
+            reserve_year,
+            weather,
+            release_time,
+            source_type
+        )
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (
+            data.training_center,
+            data.training_type,
+            data.reserve_year,
+            data.weather,
+            data.release_time,
+            data.source_type or "user",
+        ),
+    )
+
+    conn.commit()
+    report_id = cursor.lastrowid
+    conn.close()
+
+    return {
+        "success": True,
+        "message": "퇴소시간 제보가 저장되었습니다.",
+        "id": report_id,
+    }
+
+
+@app.get("/release-prediction")
+def get_release_prediction(training_center: str, training_type: str):
+    conn = sqlite3.connect(DB_NAME)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        SELECT *
+        FROM release_reports
+        WHERE training_center = ?
+          AND training_type = ?
+        ORDER BY id DESC
+        """,
+        (training_center, training_type),
+    )
+
+    rows = cursor.fetchall()
+    conn.close()
+
+    if len(rows) == 0:
+        raise HTTPException(
+            status_code=404,
+            detail="해당 훈련장과 훈련종류의 데이터가 없습니다.",
+        )
+
+    total_minutes = 0
+
+    for row in rows:
+        hour, minute = row["release_time"].split(":")
+        total_minutes += int(hour) * 60 + int(minute)
+
+    avg_minutes = round(total_minutes / len(rows))
+    avg_hour = avg_minutes // 60
+    avg_minute = avg_minutes % 60
+    predicted_time = f"{avg_hour:02d}:{avg_minute:02d}"
+
+    recent_text = ""
+    for row in rows[:10]:
+        recent_text += (
+            f"\n- 훈련장:{row['training_center']}, "
+            f"훈련종류:{row['training_type']}, "
+            f"연차:{row['reserve_year']}, "
+            f"날씨:{row['weather']}, "
+            f"퇴소시간:{row['release_time']}, "
+            f"데이터:{row['source_type']}"
+        )
+
+    prompt = f"""
+너는 예비군 카풀 앱 행군(HangGun)의 AI 퇴소시간 예측 도우미다.
+
+훈련장: {training_center}
+훈련종류: {training_type}
+데이터 수: {len(rows)}건
+평균 퇴소시간: {predicted_time}
+
+최근 데이터:
+{recent_text}
+
+답변 규칙:
+1. 한국어로 답변한다.
+2. 예상 퇴소시간을 먼저 말한다.
+3. 데이터 수와 평균값을 근거로 설명한다.
+4. 너무 길지 않게 3~5문장으로 말한다.
+5. 실제 상황에 따라 달라질 수 있음을 짧게 언급한다.
+"""
+
+    try:
+        response = model.generate_content(prompt)
+        explanation = response.text or "데이터 평균을 기준으로 예측했습니다."
+    except Exception:
+        explanation = "데이터 평균을 기준으로 예측했습니다."
+
+    return {
+        "success": True,
+        "training_center": training_center,
+        "training_type": training_type,
+        "predicted_release_time": predicted_time,
+        "data_count": len(rows),
+        "explanation": explanation,
+        "reports": [dict(row) for row in rows[:10]],
+    }
 
 @app.post("/tmap/search")
 def search_place(req: PlaceSearchRequest):
