@@ -437,6 +437,22 @@ def get_carpools():
 
     return [dict(row) for row in rows]
 
+@app.post("/admin/clear-carpools")
+def clear_carpools():
+    conn = sqlite3.connect(DB_NAME)
+    cursor = conn.cursor()
+
+    cursor.execute("DELETE FROM ride_requests")
+    cursor.execute("DELETE FROM carpools")
+
+    conn.commit()
+    conn.close()
+
+    return {
+        "success": True,
+        "message": "카풀 및 신청 데이터가 모두 삭제되었습니다."
+    }
+
 
 @app.post("/carpools/{carpool_id}/join")
 def join_carpool(carpool_id: int, data: RideRequestCreate):
