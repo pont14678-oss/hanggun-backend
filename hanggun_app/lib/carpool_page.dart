@@ -518,6 +518,79 @@ SizedBox(
                                   child: const Text('신청자 보기'),
                                 ),
                               ),
+
+                              const SizedBox(height: 8),
+                              SizedBox(
+                                width: double.infinity,
+                                child: ElevatedButton.icon(
+                                  onPressed: id == 0
+                                      ? null
+                                      : () async {
+                                          final ok = await showDialog<bool>(
+                                            context: context,
+                                            builder: (dialogContext) {
+                                              return AlertDialog(
+                                                title: const Text('운행 완료'),
+                                                content: const Text(
+                                                  '정말 이 카풀 운행을 완료하시겠습니까? 완료 후 카풀 목록에서 숨겨집니다.',
+                                                ),
+                                                actions: [
+                                                  TextButton(
+                                                    onPressed: () {
+                                                      Navigator.pop(
+                                                        dialogContext,
+                                                        false,
+                                                      );
+                                                    },
+                                                    child: const Text('취소'),
+                                                  ),
+                                                  ElevatedButton(
+                                                    onPressed: () {
+                                                      Navigator.pop(
+                                                        dialogContext,
+                                                        true,
+                                                      );
+                                                    },
+                                                    child: const Text('완료'),
+                                                  ),
+                                                ],
+                                              );
+                                            },
+                                          );
+
+                                          if (ok != true) return;
+
+                                          try {
+                                            await ApiService.completeCarpool(id);
+
+                                            locationTimer?.cancel();
+
+                                            if (!mounted) return;
+
+                                            ScaffoldMessenger.of(context)
+                                                .showSnackBar(
+                                              const SnackBar(
+                                                content: Text('운행이 완료되었습니다.'),
+                                              ),
+                                            );
+
+                                            await loadCarpools();
+                                          } catch (e) {
+                                            if (!mounted) return;
+
+                                            ScaffoldMessenger.of(context)
+                                                .showSnackBar(
+                                              SnackBar(
+                                                content:
+                                                    Text('운행 완료 실패: $e'),
+                                              ),
+                                            );
+                                          }
+                                        },
+                                  icon: const Icon(Icons.flag),
+                                  label: const Text('운행 완료'),
+                                ),
+                              ),
                             ],
                           ],
                         ),
